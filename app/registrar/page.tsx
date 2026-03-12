@@ -13,7 +13,6 @@ export default function RegistrarCarrera() {
   const [proveedores, setProveedores] = useState<any[]>([]);
   const [unidades, setUnidades] = useState<any[]>([]);
   
-  // Nuevo estado para saber si el usuario tiene una unidad fija asignada
   const [unidadFija, setUnidadFija] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -40,7 +39,6 @@ export default function RegistrarCarrera() {
       }
       setUserId(session.user.id);
 
-      // 1. Cargar el perfil del usuario para ver si tiene una unidad asignada
       const { data: perfil } = await supabase
         .from('perfiles_usuario')
         .select('unidad_id')
@@ -70,15 +68,15 @@ export default function RegistrarCarrera() {
     e.preventDefault(); 
     setLoading(true);
 
-    const { error } = await supabase.from('carreras').insert([
-      {
-        ...formData,
-        usuario_id: userId,
-        unidad_id: formData.unidad_id === '' ? null : formData.unidad_id,
-        hora_llegada: formData.hora_llegada === '' ? null : formData.hora_llegada,
-        centro_costo: formData.centro_costo === '' ? null : formData.centro_costo
-      }
-    ]);
+    const datosAEnviar = {
+      ...formData,
+      usuario_id: userId,
+      unidad_id: formData.unidad_id ? formData.unidad_id : null,
+      hora_llegada: formData.hora_llegada ? formData.hora_llegada : null,
+      centro_costo: formData.centro_costo ? formData.centro_costo : null,
+    };
+
+    const { error } = await supabase.from('carreras').insert([datosAEnviar]);
 
     if (error) {
       toast.error('Error al registrar: ' + error.message, {
@@ -91,7 +89,6 @@ export default function RegistrarCarrera() {
         autoClose: 4000,
       });
 
-      // Limpiar formulario, conservando la unidad_id si es fija
       setFormData(prev => ({ 
         ...prev, 
         hora_salida: '', 
@@ -104,7 +101,7 @@ export default function RegistrarCarrera() {
         metodo_pago: '', 
         valor: '',
         proveedor_id: '',
-        unidad_id: unidadFija ? prev.unidad_id : '' // Si tiene unidad fija, NO la borramos
+        unidad_id: unidadFija ? prev.unidad_id : ''
       }));
     }
     setLoading(false);
@@ -133,45 +130,47 @@ export default function RegistrarCarrera() {
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fecha <span className="text-red-500">*</span></label>
-              <input type="date" name="fecha" required onChange={handleChange} value={formData.fecha} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" />
+              <input type="date" name="fecha" required onChange={handleChange} value={formData.fecha} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            
+            {/* CORRECCIÓN PARA IOS: px-2, bg-white, text-gray-900, min-h-[44px] */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">H. Salida <span className="text-red-500">*</span></label>
-                <input type="time" name="hora_salida" required onChange={handleChange} value={formData.hora_salida} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" />
+                <input type="time" name="hora_salida" required onChange={handleChange} value={formData.hora_salida} className="w-full px-2 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">H. Llegada</label>
-                <input type="time" name="hora_llegada" onChange={handleChange} value={formData.hora_llegada} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" />
+                <input type="time" name="hora_llegada" onChange={handleChange} value={formData.hora_llegada} className="w-full px-2 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" />
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Cliente <span className="text-red-500">*</span></label>
-              <input type="text" name="cliente" required onChange={handleChange} value={formData.cliente} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" placeholder="Nombre de la empresa/cliente" />
+              <input type="text" name="cliente" required onChange={handleChange} value={formData.cliente} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" placeholder="Nombre de la empresa/cliente" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Servicio A: <span className="text-red-500">*</span></label>
-              <input type="text" name="servicio_a" required onChange={handleChange} value={formData.servicio_a} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" placeholder="Pasajero o carga" />
+              <input type="text" name="servicio_a" required onChange={handleChange} value={formData.servicio_a} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" placeholder="Pasajero o carga" />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Punto de Inicio <span className="text-red-500">*</span></label>
-              <input type="text" name="inicio" required onChange={handleChange} value={formData.inicio} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" />
+              <input type="text" name="inicio" required onChange={handleChange} value={formData.inicio} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Destino <span className="text-red-500">*</span></label>
-              <input type="text" name="destino" required onChange={handleChange} value={formData.destino} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" />
+              <input type="text" name="destino" required onChange={handleChange} value={formData.destino} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Centro de Costo</label>
-              <input type="text" name="centro_costo" onChange={handleChange} value={formData.centro_costo} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" placeholder="Opcional" />
+              <input type="text" name="centro_costo" onChange={handleChange} value={formData.centro_costo} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" placeholder="Opcional" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Método de Pago <span className="text-red-500">*</span></label>
-                <select name="metodo_pago" required onChange={handleChange} value={formData.metodo_pago} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none bg-white">
+                <select name="metodo_pago" required onChange={handleChange} value={formData.metodo_pago} className="w-full px-2 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]">
                   <option value="" disabled>Seleccione...</option>
                   <option value="Efectivo">Efectivo</option>
                   <option value="Credito">Crédito</option>
@@ -180,13 +179,13 @@ export default function RegistrarCarrera() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Valor ($) <span className="text-red-500">*</span></label>
-                <input type="number" step="0.01" name="valor" required onChange={handleChange} value={formData.valor} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none" placeholder="0.00" />
+                <input type="number" step="0.01" name="valor" required onChange={handleChange} value={formData.valor} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]" placeholder="0.00" />
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor <span className="text-red-500">*</span></label>
-              <select name="proveedor_id" required onChange={handleChange} value={formData.proveedor_id} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none bg-white">
+              <select name="proveedor_id" required onChange={handleChange} value={formData.proveedor_id} className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-gray-900 min-h-[44px]">
                 <option value="" disabled>Seleccione un proveedor...</option>
                 {proveedores.map(p => (
                   <option key={p.id} value={p.id}>{p.nombre_proveedor}</option>
@@ -195,13 +194,12 @@ export default function RegistrarCarrera() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Unidad (Número de Equipo)</label>
-              {/* AQUÍ ESTÁ EL CAMBIO: Se bloquea y se pone gris si tiene unidadFija */}
               <select 
                 name="unidad_id" 
                 onChange={handleChange} 
                 value={formData.unidad_id} 
                 disabled={unidadFija}
-                className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none ${unidadFija ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`}
+                className={`w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none min-h-[44px] ${unidadFija ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white text-gray-900'}`}
               >
                 <option value="">Opcional...</option>
                 {unidades.map(u => (
@@ -216,7 +214,7 @@ export default function RegistrarCarrera() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-black text-white font-medium py-3 rounded-lg hover:bg-gray-800 transition-colors disabled:bg-gray-400"
+              className="w-full bg-black text-white font-medium py-3 rounded-lg hover:bg-gray-800 transition-colors disabled:bg-gray-400 min-h-[48px]"
             >
               {loading ? 'Guardando registro...' : 'Registrar Carrera'}
             </button>

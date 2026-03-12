@@ -13,8 +13,11 @@ export default function AdminDashboard() {
   const [carreras, setCarreras] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Estados para los filtros
   const [filtroUsuario, setFiltroUsuario] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
 
   const fetchCarreras = async () => {
     setLoading(true);
@@ -89,13 +92,31 @@ export default function AdminDashboard() {
     }
   };
 
+  const limpiarFiltros = () => {
+    setFiltroUsuario('');
+    setFiltroProveedor('');
+    setFechaInicio('');
+    setFechaFin('');
+  };
+
   const usuariosUnicos = Array.from(new Set(carreras.map(c => c.perfiles_usuario?.nombre_completo))).filter(Boolean);
   const proveedoresUnicos = Array.from(new Set(carreras.map(c => c.proveedores?.nombre_proveedor))).filter(Boolean);
 
+  // Lógica de filtrado combinada (Usuario, Proveedor y Rango de Fechas)
   const carrerasFiltradas = carreras.filter(carrera => {
     const coincideUsuario = filtroUsuario ? carrera.perfiles_usuario?.nombre_completo === filtroUsuario : true;
     const coincideProveedor = filtroProveedor ? carrera.proveedores?.nombre_proveedor === filtroProveedor : true;
-    return coincideUsuario && coincideProveedor;
+    
+    let coincideFecha = true;
+    if (fechaInicio && fechaFin) {
+      coincideFecha = carrera.fecha >= fechaInicio && carrera.fecha <= fechaFin;
+    } else if (fechaInicio) {
+      coincideFecha = carrera.fecha >= fechaInicio;
+    } else if (fechaFin) {
+      coincideFecha = carrera.fecha <= fechaFin;
+    }
+
+    return coincideUsuario && coincideProveedor && coincideFecha;
   });
 
   const resumenUsuarios: Record<string, any> = {};
@@ -159,9 +180,12 @@ export default function AdminDashboard() {
     doc.setFontSize(18);
     doc.text('Reporte de Carreras - Grupo LOGIC', 14, 22);
     doc.setFontSize(11);
+    
     let textoFiltro = `Generado el: ${new Date().toLocaleDateString()}`;
+    if (fechaInicio && fechaFin) textoFiltro += ` | Período: ${fechaInicio} al ${fechaFin}`;
     if (filtroUsuario) textoFiltro += ` | Operador: ${filtroUsuario}`;
     if (filtroProveedor) textoFiltro += ` | Proveedor: ${filtroProveedor}`;
+    
     doc.text(textoFiltro, 14, 30);
 
     const tableData = carrerasFiltradas.map(c => {
@@ -171,7 +195,6 @@ export default function AdminDashboard() {
 
       return [
         `${c.fecha}\n${c.hora_salida}`,
-        // AGREGADO EL CENTRO DE COSTO AL PDF
         `${c.cliente}\n(${c.servicio_a})${c.centro_costo ? `\nCC: ${c.centro_costo}` : ''}`,
         `${c.inicio} ->\n${c.destino}`,
         c.perfiles_usuario?.nombre_completo || 'N/A',
@@ -211,21 +234,42 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Operador (Usuario)</label>
-            <select value={filtroUsuario} onChange={(e) => setFiltroUsuario(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black outline-none bg-white">
-              <option value="">Todos los operadores</option>
-              {usuariosUnicos.map((user: any, index) => <option key={index} value={user}>{user}</option>)}
-            </select>
+        {/* Sección de Filtros Completa */}
+        <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100 mb-6 space-y-4">
+          
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Operador</label>
+              <select value={filtroUsuario} onChange={(e) => setFiltroUsuario(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-orange-500 outline-none bg-white">
+                <option value="">Todos los operadores</option>
+                {usuariosUnicos.map((user: any, index) => <option key={index} value={user}>{user}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Proveedor</label>
+              <select value={filtroProveedor} onChange={(e) => setFiltroProveedor(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black -none bg-white font-medium text-blue-700">
+                <option value="">Todos los proveedores</option>
+                {proveedoresUnicos.map((prov: any, index) => <option key={index} value={prov}>{prov}</option>)}
+              </select>
+            </div>
           </div>
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Proveedor (Reporte individual)</label>
-            <select value={filtroProveedor} onChange={(e) => setFiltroProveedor(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white text-blue-700 font-medium">
-              <option value="">Mostrar todos los proveedores</option>
-              {proveedoresUnicos.map((prov: any, index) => <option key={index} value={prov}>{prov}</option>)}
-            </select>
+
+          <div className="flex flex-col md:flex-row gap-4 pt-4 border-t border-gray-100 items-end">
+            <div className="flex-1 w-full">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Desde (Fecha Inicio)</label>
+              <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black -none" />
+            </div>
+            <div className="flex-1 w-full">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hasta (Fecha Fin)</label>
+              <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black text-black -none" />
+            </div>
+            <div className="w-full md:w-auto">
+              <button onClick={limpiarFiltros} className="w-full px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors h-[42px]">
+                Limpiar Filtros
+              </button>
+            </div>
           </div>
+
         </div>
 
         {!loading && carrerasFiltradas.length > 0 && (
@@ -254,13 +298,7 @@ export default function AdminDashboard() {
                         <td className="px-4 py-2 text-right text-red-500">
                           -${u.valor_cuota.toFixed(2)}
                           {u.unidad_id && (
-                            <button 
-                              onClick={() => actualizarCuotaUnidad(u.unidad_id, u.unidad, u.tipo_cuota, u.valor_cuota)}
-                              className="ml-2 inline-block text-[10px] bg-gray-200 hover:bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded transition-colors"
-                              title="Editar cuota"
-                            >
-                              ✏️
-                            </button>
+                            <button onClick={() => actualizarCuotaUnidad(u.unidad_id, u.unidad, u.tipo_cuota, u.valor_cuota)} className="ml-2 inline-block text-[10px] bg-gray-200 hover:bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded transition-colors" title="Editar cuota">✏️</button>
                           )}
                           <br/><span className="text-[10px] text-gray-400">({u.tipo_cuota})</span>
                         </td>
@@ -281,7 +319,7 @@ export default function AdminDashboard() {
                   <thead className="bg-gray-50 text-gray-600 font-medium">
                     <tr>
                       <th className="px-4 py-2 ">Proveedor</th>
-                      <th className="px-4 py-2 text-right text-blue-700">Total Créditos</th>
+                      <th className="px-4 py-2 text-right text-blue-700">Créditos</th>
                       <th className="px-4 py-2 text-right text-red-600">- Comisión</th>
                       <th className="px-4 py-2 text-right text-red-600">- Frecuencia</th>
                       <th className="px-4 py-2 text-right font-bold text-green-700">A CANCELAR</th>
@@ -296,13 +334,7 @@ export default function AdminDashboard() {
                         <td className="px-4 py-2 text-right text-red-500 flex justify-end items-center">
                           -${p.cuota_frecuencia.toFixed(2)}
                           {p.proveedor_id && (
-                            <button 
-                              onClick={() => actualizarCuotaProveedor(p.proveedor_id, p.proveedor, p.cuota_frecuencia)}
-                              className="ml-2 text-[10px] bg-gray-200 hover:bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded transition-colors"
-                              title="Editar frecuencia"
-                            >
-                              ✏️
-                            </button>
+                            <button onClick={() => actualizarCuotaProveedor(p.proveedor_id, p.proveedor, p.cuota_frecuencia)} className="ml-2 text-[10px] bg-gray-200 hover:bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded transition-colors" title="Editar frecuencia">✏️</button>
                           )}
                         </td>
                         <td className="px-4 py-2 text-right font-bold text-green-700">${p.total_a_cancelar.toFixed(2)}</td>
@@ -348,10 +380,7 @@ export default function AdminDashboard() {
                         <td className="px-6 py-4">
                           <div className="font-medium text-gray-900">{carrera.cliente}</div>
                           <div className="text-gray-500">{carrera.servicio_a}</div>
-                          {/* AGREGADO EL CENTRO DE COSTO A LA TABLA DEL ADMIN */}
-                          {carrera.centro_costo && (
-                            <div className="text-xs font-medium text-indigo-600 mt-1">CC: {carrera.centro_costo}</div>
-                          )}
+                          {carrera.centro_costo && <div className="text-xs font-medium text-indigo-600 mt-1">CC: {carrera.centro_costo}</div>}
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-gray-900"><span className="text-gray-500">De:</span> {carrera.inicio}</div>
@@ -364,24 +393,14 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="font-medium text-gray-900">${valorNum.toFixed(2)}</div>
-                          <div className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full inline-block mt-1">
-                            {carrera.metodo_pago}
-                          </div>
-                          {comisionNum > 0 && (
-                            <div className="text-xs font-medium text-red-500 mt-1">
-                              - ${comisionNum.toFixed(2)} (Comisión)
-                            </div>
-                          )}
+                          <div className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full inline-block mt-1">{carrera.metodo_pago}</div>
+                          {comisionNum > 0 && <div className="text-xs font-medium text-red-500 mt-1">- ${comisionNum.toFixed(2)} (Comisión)</div>}
                         </td>
                       </tr>
                     );
                   })}
                   {carrerasFiltradas.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                        No se encontraron carreras.
-                      </td>
-                    </tr>
+                    <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No se encontraron carreras en estas fechas.</td></tr>
                   )}
                 </tbody>
               </table>
