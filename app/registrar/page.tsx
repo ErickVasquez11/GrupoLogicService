@@ -379,6 +379,7 @@ export default function RegistrarCarrera() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
