@@ -61,10 +61,20 @@ export default function AdminDashboard() {
   useEffect(() => {
     const checkSessionAndRole = async () => {
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (!session) return router.replace('/');
 
       const { data: perfil } = await supabase.from('perfiles_usuario').select('rol').eq('id', session.user.id).single();
-      if (!perfil || perfil.rol !== 'admin') return router.replace('/registrar'); 
+      
+      if (!perfil) {
+        return router.replace('/'); 
+      } else if (perfil.rol === 'user' || perfil.rol === 'Operador (Conductor)') {
+        return router.replace('/operador'); 
+      } else if (perfil.rol === 'proveedor') {
+        return router.replace('/proveedor'); 
+      } else if (perfil.rol !== 'admin') {
+         return router.replace('/'); 
+      }
 
       setVerificandoSeguridad(false);
       fetchDatos();
@@ -74,7 +84,7 @@ export default function AdminDashboard() {
 
   const limpiarFiltros = () => { setFiltroUsuario(''); setFiltroProveedor(''); setFechaInicio(''); setFechaFin(''); };
 
-  // --- CREAR USUARIO Y UNIDAD (CÓDIGO REPARADO Y ORDENADO) ---
+  // --- CREAR USUARIO Y UNIDAD ---
   const handleCrearUsuario = async (e: any) => {
     e.preventDefault();
     setCreandoDato(true);
@@ -84,7 +94,6 @@ export default function AdminDashboard() {
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
       const supabaseSecundario = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-      // 1. Crear usuario de Auth (Con el .trim() para evitar errores de espacios)
       const { data: authData, error: authError } = await supabaseSecundario.auth.signUp({
         email: formUsuario.email.trim(), 
         password: formUsuario.password
@@ -95,7 +104,6 @@ export default function AdminDashboard() {
       if (authData.user) {
         let unidadId = null;
 
-        // 2. Si el rol es operador ('user' o 'Operador (Conductor)'), creamos la unidad
         if (formUsuario.rol === 'user' || formUsuario.rol === 'Operador (Conductor)') {
           const { data: nuevaUnidad, error: unitError } = await supabase.from('unidades').insert([{
             numero_equipo: formUsuario.numero_equipo, 
@@ -107,7 +115,6 @@ export default function AdminDashboard() {
           unidadId = nuevaUnidad.id; 
         }
 
-        // 3. Vinculamos todo en la tabla de perfiles
         const { error: profileError } = await supabase.from('perfiles_usuario').upsert([{
           id: authData.user.id, 
           nombre_completo: formUsuario.nombre_completo, 
@@ -138,23 +145,35 @@ export default function AdminDashboard() {
     setCreandoDato(false);
   };
 
-  // --- NUEVAS FUNCIONES DE ELIMINACIÓN ---
+  // --- NUEVAS FUNCIONES DE ELIMINACIÓN FORZADA (MODO DIOS) ---
   const eliminarProveedor = async (id: string, nombre: string) => {
-    const confirmacion = window.confirm(`¿Seguro que deseas eliminar al proveedor "${nombre}"?\n\nIMPORTANTE: Si este proveedor ya tiene viajes registrados, el sistema cancelará la acción para proteger tu contabilidad.`);
+    const confirmacion = window.confirm(`¿Estás completamente seguro de eliminar al proveedor "${nombre}"?\n\nAl aceptar, se borrará del sistema y cualquier viaje pasado que haya hecho quedará marcado como "Sin Proveedor".`);
     if (!confirmacion) return;
-    toast.info('Eliminando proveedor...');
+    
+    toast.info('Desvinculando viajes y eliminando...');
+
+    await supabase.from('perfiles_usuario').update({ proveedor_id: null }).eq('proveedor_id', id);
+    await supabase.from('carreras').update({ proveedor_id: null }).eq('proveedor_id', id);
+
     const { error } = await supabase.from('proveedores').delete().eq('id', id);
-    if (error) toast.error('No se puede eliminar: El proveedor ya tiene viajes o usuarios vinculados.');
-    else { toast.success('Proveedor eliminado exitosamente.'); fetchDatos(); }
+    
+    if (error) toast.error('Error del sistema al eliminar: ' + error.message);
+    else { toast.success('Proveedor eliminado definitivamente.'); fetchDatos(); }
   };
 
   const eliminarUnidad = async (id: string, equipo: string) => {
-    const confirmacion = window.confirm(`¿Seguro que deseas eliminar la unidad "${equipo}"?\n\nIMPORTANTE: Si esta unidad ya tiene viajes registrados, el sistema cancelará la acción para proteger tu contabilidad.`);
+    const confirmacion = window.confirm(`¿Estás completamente seguro de eliminar la unidad "${equipo}"?\n\nAl aceptar, se borrará del sistema y cualquier viaje pasado que tenga quedará sin unidad asignada.`);
     if (!confirmacion) return;
-    toast.info('Eliminando unidad...');
+    
+    toast.info('Desvinculando y eliminando...');
+
+    await supabase.from('perfiles_usuario').update({ unidad_id: null }).eq('unidad_id', id);
+    await supabase.from('carreras').update({ unidad_id: null }).eq('unidad_id', id);
+
     const { error } = await supabase.from('unidades').delete().eq('id', id);
-    if (error) toast.error('No se puede eliminar: La unidad ya tiene viajes vinculados.');
-    else { toast.success('Unidad eliminada exitosamente.'); fetchDatos(); }
+    
+    if (error) toast.error('Error del sistema al eliminar: ' + error.message);
+    else { toast.success('Unidad eliminada definitivamente.'); fetchDatos(); }
   };
 
   const guardarEdicion = async () => {
@@ -332,59 +351,69 @@ export default function AdminDashboard() {
               
               {dirTab === 'usuarios' && (
                 <form onSubmit={handleCrearUsuario} className="space-y-4">
-                  <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">Registrar Nuevo Acceso</h3>
+                  <h3 className="font-bold text-black mb-4 border-b-2 border-black pb-2">Registrar Nuevo Acceso</h3>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-xs font-medium text-gray-500 mb-1">Correo Electrónico</label>
-                    <input type="email" required value={formUsuario.email} onChange={e=>setFormUsuario({...formUsuario, email: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900" placeholder="ejemplo@logic.com"/></div>
-                    <div><label className="block text-xs font-medium text-gray-500 mb-1">Contraseña Temporal</label>
-                    <input type="text" required value={formUsuario.password} onChange={e=>setFormUsuario({...formUsuario, password: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900" placeholder="Mínimo 6 caracteres"/></div>
+                    <div>
+                      <label className="block text-xs font-bold text-black mb-1">Correo Electrónico</label>
+                      <input type="email" required value={formUsuario.email} onChange={e=>setFormUsuario({...formUsuario, email: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black placeholder-gray-500 bg-white" placeholder="ejemplo@logic.com"/>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-black mb-1">Contraseña Temporal</label>
+                      <input type="text" required value={formUsuario.password} onChange={e=>setFormUsuario({...formUsuario, password: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black placeholder-gray-500 bg-white" placeholder="Mínimo 6 caracteres"/>
+                    </div>
                   </div>
                   
-                  <div><label className="block text-xs font-medium text-gray-500 mb-1">Nombre Completo (Real)</label>
-                  <input type="text" required value={formUsuario.nombre_completo} onChange={e=>setFormUsuario({...formUsuario, nombre_completo: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900" placeholder="Juan Perez"/></div>
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-1">Nombre Completo (Real)</label>
+                    <input type="text" required value={formUsuario.nombre_completo} onChange={e=>setFormUsuario({...formUsuario, nombre_completo: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black placeholder-gray-500 bg-white" placeholder="Juan Perez"/>
+                  </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-xs font-medium text-gray-500 mb-1">Rol en Sistema</label>
-                    <select value={formUsuario.rol} onChange={e=>setFormUsuario({...formUsuario, rol: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900 bg-white">
-                      <option value="user">Operador (Conductor)</option>
-                      <option value="proveedor">Proveedor Logístico</option>
-                      <option value="admin">Administrador</option>
-                    </select></div>
+                    <div>
+                      <label className="block text-xs font-bold text-black mb-1">Rol en Sistema</label>
+                      <select value={formUsuario.rol} onChange={e=>setFormUsuario({...formUsuario, rol: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black bg-white">
+                        <option value="user">Operador (Conductor)</option>
+                        <option value="proveedor">Proveedor Logístico</option>
+                        <option value="admin">Administrador</option>
+                      </select>
+                    </div>
 
                     {formUsuario.rol === 'proveedor' && (
-                      <div><label className="block text-xs font-medium text-gray-500 mb-1">Vincular con Empresa</label>
-                      <select required value={formUsuario.proveedor_id} onChange={e=>setFormUsuario({...formUsuario, proveedor_id: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900 bg-white">
-                        <option value="">Seleccione proveedor...</option>
-                        {proveedoresTotales.map(p => <option key={p.id} value={p.id}>{p.nombre_proveedor}</option>)}
-                      </select></div>
+                      <div>
+                        <label className="block text-xs font-bold text-black mb-1">Vincular con Empresa</label>
+                        <select required value={formUsuario.proveedor_id} onChange={e=>setFormUsuario({...formUsuario, proveedor_id: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black bg-white">
+                          <option value="">Seleccione proveedor...</option>
+                          {proveedoresTotales.map(p => <option key={p.id} value={p.id}>{p.nombre_proveedor}</option>)}
+                        </select>
+                      </div>
                     )}
                   </div>
 
                   {formUsuario.rol === 'user' && (
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-2">
-                      <h4 className="font-bold text-gray-700 mb-3 border-b pb-1 text-sm">Crear y Asignar Unidad Física</h4>
+                    <div className="bg-gray-100 p-4 rounded-lg border-2 border-black mt-2">
+                      <h4 className="font-bold text-black mb-3 border-b border-black pb-1 text-sm">Crear y Asignar Unidad Física</h4>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">N° de Equipo</label>
-                          <input type="text" required value={formUsuario.numero_equipo} onChange={e=>setFormUsuario({...formUsuario, numero_equipo: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900" placeholder="Ej. U-01"/>
+                          <label className="block text-xs font-bold text-black mb-1">N° de Equipo</label>
+                          <input type="text" required value={formUsuario.numero_equipo} onChange={e=>setFormUsuario({...formUsuario, numero_equipo: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black bg-white" placeholder="Ej. U-01"/>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Tipo de Cuota</label>
-                          <select value={formUsuario.tipo_cuota} onChange={e=>setFormUsuario({...formUsuario, tipo_cuota: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900 bg-white">
+                          <label className="block text-xs font-bold text-black mb-1">Tipo de Cuota</label>
+                          <select value={formUsuario.tipo_cuota} onChange={e=>setFormUsuario({...formUsuario, tipo_cuota: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black bg-white">
                             <option value="Frecuencia">Frecuencia</option>
                             <option value="Cuadre">Cuadre</option>
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Valor Cuota ($)</label>
-                          <input type="number" step="0.01" required value={formUsuario.valor_cuota} onChange={e=>setFormUsuario({...formUsuario, valor_cuota: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900" placeholder="0.00"/>
+                          <label className="block text-xs font-bold text-black mb-1">Valor Cuota ($)</label>
+                          <input type="number" step="0.01" required value={formUsuario.valor_cuota} onChange={e=>setFormUsuario({...formUsuario, valor_cuota: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black bg-white" placeholder="0.00"/>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  <button type="submit" disabled={creandoDato} className="w-full mt-4 bg-indigo-950 text-white py-2.5 rounded-lg hover:bg-indigo-900 font-medium transition-colors disabled:bg-gray-400">
+                  <button type="submit" disabled={creandoDato} className="w-full mt-4 bg-black text-white py-2.5 rounded-lg hover:bg-gray-800 font-bold transition-colors disabled:bg-gray-400">
                     {creandoDato ? 'Guardando Datos...' : 'Crear Acceso en Sistema'}
                   </button>
                 </form>
@@ -392,12 +421,16 @@ export default function AdminDashboard() {
 
               {dirTab === 'proveedores' && (
                 <form onSubmit={handleCrearProveedor} className="space-y-4">
-                  <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">Registrar Nuevo Proveedor</h3>
-                  <div><label className="block text-xs font-medium text-gray-500 mb-1">Nombre del Proveedor</label>
-                  <input type="text" required value={formProveedor.nombre_proveedor} onChange={e=>setFormProveedor({...formProveedor, nombre_proveedor: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900" /></div>
-                  <div><label className="block text-xs font-medium text-gray-500 mb-1">Cuota de Frecuencia Inicial ($)</label>
-                  <input type="number" step="0.01" required value={formProveedor.cuota_frecuencia} onChange={e=>setFormProveedor({...formProveedor, cuota_frecuencia: e.target.value})} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-900" placeholder="0.00" /></div>
-                  <button type="submit" disabled={creandoDato} className="w-full mt-4 bg-indigo-950 text-white py-2.5 rounded-lg hover:bg-indigo-900 font-medium transition-colors disabled:bg-gray-400">
+                  <h3 className="font-bold text-black mb-4 border-b-2 border-black pb-2">Registrar Nuevo Proveedor</h3>
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-1">Nombre del Proveedor</label>
+                    <input type="text" required value={formProveedor.nombre_proveedor} onChange={e=>setFormProveedor({...formProveedor, nombre_proveedor: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-black mb-1">Cuota de Frecuencia Inicial ($)</label>
+                    <input type="number" step="0.01" required value={formProveedor.cuota_frecuencia} onChange={e=>setFormProveedor({...formProveedor, cuota_frecuencia: e.target.value})} className="w-full px-3 py-2 border-2 border-black text-black font-medium rounded-lg outline-none focus:ring-2 focus:ring-black bg-white" placeholder="0.00" />
+                  </div>
+                  <button type="submit" disabled={creandoDato} className="w-full mt-4 bg-black text-white py-2.5 rounded-lg hover:bg-gray-800 font-bold transition-colors disabled:bg-gray-400">
                     {creandoDato ? 'Guardando...' : 'Crear Proveedor'}
                   </button>
                 </form>
@@ -487,18 +520,19 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* --- SECCIÓN DE FILTROS ACTUALIZADA --- */}
         <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-100 mb-6 space-y-4">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Operador</label>
-              <select value={filtroUsuario} onChange={(e) => setFiltroUsuario(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white">
+              <label className="block text-sm font-bold text-red-600 mb-1">Filtrar por Operador</label>
+              <select value={filtroUsuario} onChange={(e) => setFiltroUsuario(e.target.value)} className="w-full px-4 py-2 border-2 border-red-500 text-red-600 font-bold rounded-lg focus:ring-2 focus:ring-red-600 outline-none bg-white">
                 <option value="">Todos los operadores</option>
                 {usuariosUnicos.map((user: any, index) => <option key={index} value={user}>{user}</option>)}
               </select>
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Proveedor</label>
-              <select value={filtroProveedor} onChange={(e) => setFiltroProveedor(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none bg-white font-medium text-blue-700">
+              <label className="block text-sm font-bold text-blue-700 mb-1">Filtrar por Proveedor</label>
+              <select value={filtroProveedor} onChange={(e) => setFiltroProveedor(e.target.value)} className="w-full px-4 py-2 border-2 border-blue-500 text-blue-700 font-bold rounded-lg focus:ring-2 focus:ring-blue-600 outline-none bg-white">
                 <option value="">Todos los proveedores</option>
                 {proveedoresTotales.map((prov: any) => <option key={prov.id} value={prov.nombre_proveedor}>{prov.nombre_proveedor}</option>)}
               </select>
@@ -506,15 +540,15 @@ export default function AdminDashboard() {
           </div>
           <div className="flex flex-col md:flex-row gap-4 pt-4 border-t border-gray-100 items-end">
             <div className="flex-1 w-full">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Desde (Fecha Inicio)</label>
-              <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none" />
+              <label className="block text-sm font-bold text-black mb-1">Desde (Fecha Inicio)</label>
+              <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="w-full px-4 py-2 border-2 border-black text-black font-medium rounded-lg focus:ring-2 focus:ring-black outline-none bg-white" />
             </div>
             <div className="flex-1 w-full">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Hasta (Fecha Fin)</label>
-              <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none" />
+              <label className="block text-sm font-bold text-black mb-1">Hasta (Fecha Fin)</label>
+              <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="w-full px-4 py-2 border-2 border-black text-black font-medium rounded-lg focus:ring-2 focus:ring-black outline-none bg-white" />
             </div>
             <div className="w-full md:w-auto">
-              <button onClick={limpiarFiltros} className="w-full px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors h-[42px]">Limpiar Filtros</button>
+              <button onClick={limpiarFiltros} className="w-full px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition-colors h-[42px] border-2 border-transparent">Limpiar Filtros</button>
             </div>
           </div>
         </div>
@@ -541,9 +575,9 @@ export default function AdminDashboard() {
                         <td className="px-4 py-2 text-amber-500">
                           <span className="font-medium text-black">{u.usuario}</span><br/>
                           <span className="text-xs text-gray-500">U: {u.unidad}</span>
-                          {/* BOTÓN ELIMINAR UNIDAD */}
+                          {/* BOTÓN ELIMINAR UNIDAD FORZADO */}
                           {u.unidad_id && (
-                            <button onClick={() => eliminarUnidad(u.unidad_id, u.unidad)} className="ml-1 text-[10px] bg-red-100 hover:bg-red-200 text-red-600 px-1.5 py-0.5 rounded transition-colors" title="Eliminar unidad física">🗑️</button>
+                            <button onClick={() => eliminarUnidad(u.unidad_id, u.unidad)} className="ml-1 text-[10px] bg-red-100 hover:bg-red-200 text-red-600 px-1.5 py-0.5 rounded transition-colors" title="Eliminar unidad física (Modo Fuerza)">🗑️</button>
                           )}
                         </td>
                         <td className="px-4 py-2 text-right text-green-600">${u.bruto.toFixed(2)}</td>
@@ -583,9 +617,9 @@ export default function AdminDashboard() {
                       <tr key={i} className="hover:bg-gray-50">
                         <td className="px-4 py-2 font-medium text-green-700">
                           {p.proveedor}
-                          {/* BOTÓN ELIMINAR PROVEEDOR */}
+                          {/* BOTÓN ELIMINAR PROVEEDOR FORZADO */}
                           {p.proveedor_id && (
-                            <button onClick={() => eliminarProveedor(p.proveedor_id, p.proveedor)} className="ml-2 text-[10px] bg-red-100 hover:bg-red-200 text-red-600 px-1.5 py-0.5 rounded transition-colors" title="Eliminar proveedor">🗑️</button>
+                            <button onClick={() => eliminarProveedor(p.proveedor_id, p.proveedor)} className="ml-2 text-[10px] bg-red-100 hover:bg-red-200 text-red-600 px-1.5 py-0.5 rounded transition-colors" title="Eliminar proveedor (Modo Fuerza)">🗑️</button>
                           )}
                         </td>
                         <td className="px-4 py-2 text-right text-gray-600">${p.bruto.toFixed(2)}</td>
